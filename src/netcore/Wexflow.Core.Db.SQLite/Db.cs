@@ -228,7 +228,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<User> admins = new();
+                List<User> admins = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -271,7 +271,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<Entry> entries = new();
+                List<Entry> entries = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -314,7 +314,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<Entry> entries = new();
+                List<Entry> entries = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -394,6 +394,9 @@ namespace Wexflow.Core.Db.SQLite
                     case EntryOrderBy.StatusDescending:
 
                         _ = sqlBuilder.Append(Entry.COLUMN_NAME_STATUS).Append(" DESC");
+                        break;
+
+                    default:
                         break;
                 }
 
@@ -582,7 +585,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<HistoryEntry> entries = new();
+                List<HistoryEntry> entries = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -622,7 +625,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<HistoryEntry> entries = new();
+                List<HistoryEntry> entries = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -665,7 +668,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<HistoryEntry> entries = new();
+                List<HistoryEntry> entries = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -710,7 +713,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<HistoryEntry> entries = new();
+                List<HistoryEntry> entries = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -789,6 +792,9 @@ namespace Wexflow.Core.Db.SQLite
                     case EntryOrderBy.StatusDescending:
 
                         _ = sqlBuilder.Append(HistoryEntry.COLUMN_NAME_STATUS).Append(" DESC");
+                        break;
+
+                    default:
                         break;
                 }
 
@@ -1014,7 +1020,7 @@ namespace Wexflow.Core.Db.SQLite
             }
         }
 
-        public override Core.Db.User GetUserById(string userId)
+        public override Core.Db.User GetUserById(string id)
         {
             lock (Padlock)
             {
@@ -1029,7 +1035,7 @@ namespace Wexflow.Core.Db.SQLite
                     + User.COLUMN_NAME_CREATED_ON + ", "
                     + User.COLUMN_NAME_MODIFIED_ON
                     + " FROM " + Core.Db.User.DOCUMENT_NAME
-                    + " WHERE " + User.COLUMN_NAME_ID + " = '" + int.Parse(userId) + "'"
+                    + " WHERE " + User.COLUMN_NAME_ID + " = '" + int.Parse(id) + "'"
                     + ";", conn);
 
                 using var reader = command.ExecuteReader();
@@ -1058,7 +1064,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<User> users = new();
+                List<User> users = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -1099,7 +1105,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<User> users = new();
+                List<User> users = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -1142,7 +1148,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<string> workflowIds = new();
+                List<string> workflowIds = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -1200,7 +1206,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<Core.Db.Workflow> workflows = new();
+                List<Core.Db.Workflow> workflows = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -1571,7 +1577,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<User> users = new();
+                List<User> users = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -1762,7 +1768,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<Record> records = new();
+                List<Record> records = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -1819,7 +1825,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<Record> records = new();
+                List<Record> records = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -1875,7 +1881,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<Record> records = new();
+                List<Record> records = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -1998,7 +2004,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<Version> versions = new();
+                List<Version> versions = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -2166,7 +2172,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<Notification> notifications = new();
+                List<Notification> notifications = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();
@@ -2309,7 +2315,7 @@ namespace Wexflow.Core.Db.SQLite
         {
             lock (Padlock)
             {
-                List<Approver> approvers = new();
+                List<Approver> approvers = [];
 
                 using SQLiteConnection conn = new(_connectionString);
                 conn.Open();

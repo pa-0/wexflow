@@ -139,7 +139,7 @@ namespace Wexflow.Core
             ["quartz.serializer.type"] = "json"
         };
 
-        private static readonly ISchedulerFactory SchedulerFactory = new StdSchedulerFactory(QuartzProperties);
+        private static readonly StdSchedulerFactory SchedulerFactory = new(QuartzProperties);
         private static readonly IScheduler QuartzScheduler = SchedulerFactory.GetScheduler().Result;
 
         /// <summary>
@@ -180,7 +180,7 @@ namespace Wexflow.Core
             SmtpUser = smtpUser;
             SmtpPassword = smtpPassword;
             SmtpFrom = smtpFrom;
-            Workflows = new List<Workflow>();
+            Workflows = [];
 
             Logger.Info("");
             Logger.Info("Starting Wexflow Engine");
@@ -220,6 +220,8 @@ namespace Wexflow.Core
                     break;
                 case DbType.MariaDB:
                     Database = new Db.MariaDB.Db(ConnectionString);
+                    break;
+                default:
                     break;
             }
 
@@ -281,7 +283,7 @@ namespace Wexflow.Core
 
         private void LoadGlobalVariables()
         {
-            List<Variable> variables = new();
+            List<Variable> variables = [];
             var xdoc = XDocument.Load(GlobalVariablesFile);
 
             foreach (var xvariable in xdoc.Descendants("Variable"))
@@ -294,7 +296,7 @@ namespace Wexflow.Core
                 variables.Add(variable);
             }
 
-            GlobalVariables = variables.ToArray();
+            GlobalVariables = [.. variables];
         }
 
         private static string GetWexflowSetting(XDocument xdoc, string name)
@@ -342,7 +344,7 @@ namespace Wexflow.Core
                 Workflow wf = new(
                        this
                     , 1
-                    , new Dictionary<Guid, Workflow>()
+                    , []
                     , workflow.GetDbId()
                     , workflow.Xml
                     , TempFolder
@@ -394,7 +396,7 @@ namespace Wexflow.Core
                         _ = new Workflow(
                          this
                         , 1
-                        , new Dictionary<Guid, Workflow>()
+                        , []
                         , "-1"
                         , xml
                         , TempFolder
@@ -436,7 +438,7 @@ namespace Wexflow.Core
                     _ = new Workflow(
                         this
                         , 1
-                        , new Dictionary<Guid, Workflow>()
+                        , []
                         , "-1"
                         , xml
                         , TempFolder
@@ -482,6 +484,35 @@ namespace Wexflow.Core
             }
 
             return "-1";
+        }
+
+        /// <summary>
+        /// Get workflow id from xml 
+        /// </summary>
+        /// <param name="xml"></param>
+        /// <returns></returns>
+        public int GetWorkflowId(string xml)
+        {
+            try
+            {
+                using var xmlReader = XmlReader.Create(new StringReader(xml));
+                XmlNamespaceManager xmlNamespaceManager = null;
+                var xmlNameTable = xmlReader.NameTable;
+                if (xmlNameTable != null)
+                {
+                    xmlNamespaceManager = new XmlNamespaceManager(xmlNameTable);
+                    xmlNamespaceManager.AddNamespace("wf", "urn:wexflow-schema");
+                }
+
+                var xdoc = XDocument.Parse(xml);
+                var id = int.Parse(((xdoc.XPathSelectElement("/wf:Workflow", xmlNamespaceManager) ?? throw new InvalidOperationException()).Attribute("id") ?? throw new InvalidOperationException("id attribute of workflow not found")).Value);
+                return id;
+            }
+            catch (Exception e)
+            {
+                Logger.ErrorFormat("Error while retrieving workflow id: {0}", e.Message);
+                return -1;
+            }
         }
 
         /// <summary>
@@ -644,7 +675,7 @@ namespace Wexflow.Core
             catch (Exception e)
             {
                 Logger.ErrorFormat("Error while retrieving user workflows of user {0}: {1}", userId, e.Message);
-                return Array.Empty<Workflow>();
+                return [];
             }
         }
 
@@ -683,7 +714,7 @@ namespace Wexflow.Core
             catch (Exception e)
             {
                 Logger.ErrorFormat("Error while retrieving administrators: {0}", e.Message);
-                return Array.Empty<User>();
+                return [];
             }
         }
 
@@ -701,7 +732,7 @@ namespace Wexflow.Core
             catch (Exception e)
             {
                 Logger.ErrorFormat("Error while retrieving administrators: {0}", e.Message);
-                return Array.Empty<User>();
+                return [];
             }
         }
 
@@ -881,8 +912,9 @@ namespace Wexflow.Core
         /// </summary>
         /// <param name="startedBy">Username of the user that started the workflow.</param>
         /// <param name="workflowId">Workflow Id.</param>
+        /// <param name="restVariables">Rest variables</param>
         /// <returns>Instance id.</returns>
-        public Guid StartWorkflow(string startedBy, int workflowId)
+        public Guid StartWorkflow(string startedBy, int workflowId, List<Variable> restVariables = null)
         {
             var wf = GetWorkflow(workflowId);
 
@@ -894,7 +926,7 @@ namespace Wexflow.Core
             {
                 if (wf.IsEnabled)
                 {
-                    var instanceId = wf.StartAsync(startedBy);
+                    var instanceId = wf.StartAsync(startedBy, restVariables);
                     return instanceId;
                 }
             }
@@ -1398,8 +1430,8 @@ namespace Wexflow.Core
 
                     var recordVersions = Database.GetVersions(recordId);
 
-                    List<string> versionsToDelete = new();
-                    List<Db.Version> versionsToDeleteObjs = new();
+                    List<string> versionsToDelete = [];
+                    List<Db.Version> versionsToDeleteObjs = [];
                     foreach (var version in recordVersions)
                     {
                         if (versions.All(v => v.FilePath != version.FilePath))
@@ -1408,7 +1440,7 @@ namespace Wexflow.Core
                             versionsToDeleteObjs.Add(version);
                         }
                     }
-                    Database.DeleteVersions(versionsToDelete.ToArray());
+                    Database.DeleteVersions([.. versionsToDelete]);
 
                     foreach (var version in versionsToDeleteObjs)
                     {
@@ -1510,7 +1542,7 @@ namespace Wexflow.Core
                 FilePath = destPath
             };
 
-            List<Db.Version> versions = new() { version };
+            List<Db.Version> versions = [version];
 
             var recordId = SaveRecord("-1", record, versions);
             return recordId;

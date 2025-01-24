@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using System;
 using System.Net;
 using System.Security.Cryptography;
@@ -23,7 +23,6 @@ namespace Wexflow.Core.Service.Client
             {
                 var inputBytes = Encoding.ASCII.GetBytes(input);
                 var hashBytes = md5.ComputeHash(inputBytes);
-
                 // Convert the byte array to hexadecimal string
                 var sb = new StringBuilder();
                 // ReSharper disable once ForCanBeConvertedToForeach
@@ -57,6 +56,15 @@ namespace Wexflow.Core.Service.Client
             var webClient = new WebClient();
             webClient.Headers.Add("Authorization", $"Basic {Base64Encode($"{username}:{GetMd5(password)}")}");
             var instanceId = webClient.UploadString(uri, string.Empty);
+            return Guid.Parse(instanceId.Replace("\"", string.Empty));
+        }
+
+        public Guid StartWorkflowWithVariables(string payload, string username, string password)
+        {
+            var uri = $"{Uri}/start-with-variables";
+            var webClient = new WebClient();
+            webClient.Headers.Add("Authorization", $"Basic {Base64Encode($"{username}:{GetMd5(password)}")}");
+            var instanceId = webClient.UploadString(uri, payload);
             return Guid.Parse(instanceId.Replace("\"", string.Empty));
         }
 

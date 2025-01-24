@@ -57,7 +57,7 @@ namespace Wexflow.Tasks.YouTubeListUploads
                     GoogleClientSecrets.Load(stream).Secrets,
                     // This OAuth 2.0 access scope allows for read-only access to the authenticated 
                     // user's account, but not other types of account access.
-                    new[] { YouTubeService.Scope.YoutubeReadonly },
+                    [YouTubeService.Scope.YoutubeReadonly],
                     User,
                     CancellationToken.None,
                     new FileDataStore(GetType().ToString())
@@ -121,7 +121,11 @@ namespace Wexflow.Tasks.YouTubeListUploads
                 xchannels.Add(xchannel);
             }
 
-            if (xdoc.Root == null) throw new InvalidOperationException();
+            if (xdoc.Root == null)
+            {
+                throw new InvalidOperationException();
+            }
+
             xdoc.Root.Add(xchannels);
             xdoc.Save(xmlPath);
             Files.Add(new FileInf(xmlPath, Id));

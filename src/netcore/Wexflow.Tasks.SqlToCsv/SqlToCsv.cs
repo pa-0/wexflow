@@ -200,6 +200,8 @@ namespace Wexflow.Tasks.SqlToCsv
                         ConvertToCsv(connection, command);
                     }
                     break;
+                default:
+                    break;
             }
         }
 
@@ -216,8 +218,8 @@ namespace Wexflow.Tasks.SqlToCsv
 
                 while (hasRows)
                 {
-                    List<string> columns = new();
-                    List<string> values = new();
+                    List<string> columns = [];
+                    List<string> values = [];
                     var readColumns = false;
                     var headerDone = false;
                     var readRecord = false;

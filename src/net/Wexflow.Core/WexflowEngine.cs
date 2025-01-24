@@ -226,6 +226,8 @@ namespace Wexflow.Core
                 case DbType.MariaDB:
                     Database = new Db.MariaDB.Db(ConnectionString);
                     break;
+                default:
+                    break;
             }
 
             Database?.Init();
@@ -489,6 +491,37 @@ namespace Wexflow.Core
             }
 
             return "-1";
+        }
+
+        /// <summary>
+        /// Get workflow id from xml 
+        /// </summary>
+        /// <param name="xml"></param>
+        /// <returns></returns>
+        public int GetWorkflowId(string xml)
+        {
+            try
+            {
+                using (var xmlReader = XmlReader.Create(new StringReader(xml)))
+                {
+                    XmlNamespaceManager xmlNamespaceManager = null;
+                    var xmlNameTable = xmlReader.NameTable;
+                    if (xmlNameTable != null)
+                    {
+                        xmlNamespaceManager = new XmlNamespaceManager(xmlNameTable);
+                        xmlNamespaceManager.AddNamespace("wf", "urn:wexflow-schema");
+                    }
+
+                    var xdoc = XDocument.Parse(xml);
+                    var id = int.Parse(((xdoc.XPathSelectElement("/wf:Workflow", xmlNamespaceManager) ?? throw new InvalidOperationException()).Attribute("id") ?? throw new InvalidOperationException("id attribute of workflow not found")).Value);
+                    return id;
+                }
+            }
+            catch (Exception e)
+            {
+                Logger.ErrorFormat("Error while retrieving workflow id: {0}", e.Message);
+                return -1;
+            }
         }
 
         /// <summary>
@@ -888,8 +921,9 @@ namespace Wexflow.Core
         /// </summary>
         /// <param name="startedBy">Username of the user that started the workflow.</param>
         /// <param name="workflowId">Workflow Id.</param>
+        /// <param name="restVariables">Rest variables</param>
         /// <returns>Instance id.</returns>
-        public Guid StartWorkflow(string startedBy, int workflowId)
+        public Guid StartWorkflow(string startedBy, int workflowId, List<Variable> restVariables = null)
         {
             var wf = GetWorkflow(workflowId);
 
@@ -901,7 +935,7 @@ namespace Wexflow.Core
             {
                 if (wf.IsEnabled)
                 {
-                    var instanceId = wf.StartAsync(startedBy);
+                    var instanceId = wf.StartAsync(startedBy, restVariables);
                     return instanceId;
                 }
             }

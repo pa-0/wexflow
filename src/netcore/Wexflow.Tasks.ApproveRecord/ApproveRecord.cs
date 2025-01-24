@@ -25,6 +25,8 @@ namespace Wexflow.Tasks.ApproveRecord
         public string OnStopped { get; }
         public bool DeleteWorkflowOnApproval { get; }
 
+        private static readonly char[] separator = [','];
+
         public ApproveRecord(XElement xe, Workflow wf) : base(xe, wf)
         {
             RecordId = GetSetting("record");
@@ -720,11 +722,11 @@ namespace Wexflow.Tasks.ApproveRecord
 
         private Task[] GetTasks(string evt)
         {
-            List<Task> tasks = new();
+            List<Task> tasks = [];
 
             if (!string.IsNullOrEmpty(evt))
             {
-                var ids = evt.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                var ids = evt.Split(separator, StringSplitOptions.RemoveEmptyEntries);
                 foreach (var id in ids)
                 {
                     var taskId = int.Parse(id.Trim());
@@ -733,7 +735,7 @@ namespace Wexflow.Tasks.ApproveRecord
                 }
             }
 
-            return tasks.ToArray();
+            return [.. tasks];
         }
 
         private static void Send(string host, int port, bool enableSsl, string user, string password, string to, string from, string subject, string body)

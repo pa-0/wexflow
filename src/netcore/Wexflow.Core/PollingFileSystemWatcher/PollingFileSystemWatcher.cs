@@ -43,10 +43,7 @@ namespace Wexflow.Core.PollingFileSystemWatcher
         /// <param name="options">Options.</param>
         public PollingFileSystemWatcher(string path, string filter = "*", EnumerationOptions options = null)
         {
-            if (path == null)
-            {
-                throw new ArgumentNullException(nameof(path));
-            }
+            ArgumentNullException.ThrowIfNull(path);
 
             if (!Directory.Exists(path))
             {
@@ -93,10 +90,7 @@ namespace Wexflow.Core.PollingFileSystemWatcher
 
         public void Start()
         {
-            if (_disposed)
-            {
-                throw new ObjectDisposedException(nameof(PollingFileSystemWatcher));
-            }
+            ObjectDisposedException.ThrowIf(_disposed, nameof(PollingFileSystemWatcher));
 
             if (_started)
             {

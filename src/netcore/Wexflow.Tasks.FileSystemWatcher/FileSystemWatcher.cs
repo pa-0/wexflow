@@ -22,6 +22,8 @@ namespace Wexflow.Tasks.FileSystemWatcher
         public static bool SafeMode { get; private set; }
         public static List<string> CurrentLogs { get; private set; }
 
+        private static readonly char[] separator = [','];
+
         public FileSystemWatcher(XElement xe, Workflow wf) : base(xe, wf)
         {
             FolderToWatch = GetSetting("folderToWatch");
@@ -32,7 +34,7 @@ namespace Wexflow.Tasks.FileSystemWatcher
             OnFileChanged = GetSetting("onFileChanged");
             OnFileDeleted = GetSetting("onFileDeleted");
             SafeMode = bool.Parse(GetSetting("safeMode", "true"));
-            CurrentLogs = new List<string>();
+            CurrentLogs = [];
         }
 
         public override TaskStatus Run()
@@ -262,6 +264,10 @@ namespace Wexflow.Tasks.FileSystemWatcher
                             ErrorFormat("An error while updating PollingFileSystemWatcher.OnDeleted database entry.", ex);
                         }
                         break;
+                    case WatcherChangeTypes.Renamed:
+                    case WatcherChangeTypes.All:
+                    default:
+                        break;
                 }
             }
         }
@@ -275,11 +281,11 @@ namespace Wexflow.Tasks.FileSystemWatcher
 
         private Task[] GetTasks(string evt)
         {
-            List<Task> tasks = new();
+            List<Task> tasks = [];
 
             if (!string.IsNullOrEmpty(evt))
             {
-                var ids = evt.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                var ids = evt.Split(separator, StringSplitOptions.RemoveEmptyEntries);
                 foreach (var id in ids)
                 {
                     var taskId = int.Parse(id.Trim());
@@ -288,7 +294,7 @@ namespace Wexflow.Tasks.FileSystemWatcher
                 }
             }
 
-            return tasks.ToArray();
+            return [.. tasks];
         }
 
         private void ClearFiles()

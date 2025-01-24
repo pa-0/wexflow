@@ -65,9 +65,9 @@ namespace Wexflow.Tasks.YouTubeSearch
             // Call the search.list method to retrieve results matching the specified query term.
             var searchListResponse = await searchListRequest.ExecuteAsync();
 
-            List<string> videos = new();
-            List<string> channels = new();
-            List<string> playlists = new();
+            List<string> videos = [];
+            List<string> channels = [];
+            List<string> playlists = [];
 
             // Add each result to the appropriate list, and then display the lists of
             // matching videos, channels, and playlists.
@@ -97,6 +97,9 @@ namespace Wexflow.Tasks.YouTubeSearch
                         playlists.Add($"{searchResult.Snippet.Title} ({searchResult.Id.PlaylistId})");
                         xplaylists.Add(new XElement("Playlist", new XAttribute("id", searchResult.Id.PlaylistId), new XAttribute("title", searchResult.Snippet.Title)));
                         break;
+
+                    default:
+                        break;
                 }
             }
 
@@ -104,7 +107,11 @@ namespace Wexflow.Tasks.YouTubeSearch
             InfoFormat("Channels:\n{0}\n", string.Join("\n", channels));
             InfoFormat("Playlists:\n{0}\n", string.Join("\n", playlists));
 
-            if (xdoc.Root == null) throw new InvalidOperationException();
+            if (xdoc.Root == null)
+            {
+                throw new InvalidOperationException();
+            }
+
             xdoc.Root.Add(xvideos);
             xdoc.Root.Add(xchannels);
             xdoc.Root.Add(xplaylists);

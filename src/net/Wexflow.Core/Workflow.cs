@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
@@ -22,6 +22,8 @@ namespace Wexflow.Core
     /// </summary>
     public class Workflow
     {
+        private readonly object padlock = new object();
+
         /// <summary>
         /// This constant is used to determine the key size of the encryption algorithm in bits.
         /// We divide this by 8 within the code below to get the equivalent number of bytes.
@@ -582,7 +584,7 @@ namespace Wexflow.Core
                     var taskNodes = GetTaskNodes(xExectionGraph);
 
                     // Check startup node, parallel tasks and infinite loops
-                    if (taskNodes.Any())
+                    if (taskNodes.Length != 0)
                     {
                         CheckStartupNode(taskNodes, "Startup node with parentId=-1 not found in ExecutionGraph execution graph.");
                     }
@@ -897,8 +899,9 @@ namespace Wexflow.Core
         /// Starts this workflow asynchronously.
         /// </summary>
         /// <param name="startedBy">Username of the user that started the workflow.</param>
+        /// <param name="restVariables">Rest variables</param>
         /// <returns>Instance Id.</returns>
-        public Guid StartAsync(string startedBy)
+        public Guid StartAsync(string startedBy, List<Variable> restVariables = null)
         {
             if (IsRunning && !EnableParallelJobs)
             {
@@ -926,14 +929,14 @@ namespace Wexflow.Core
                     RestVariables = RestVariables,
                     StartedBy = startedBy
                 };
-                return workflow.StartAsync(startedBy);
+                return workflow.StartAsync(startedBy, restVariables);
             }
 
             StartedOn = DateTime.Now;
             StartedBy = startedBy;
             var instanceId = Guid.NewGuid();
             var warning = false;
-            var thread = new Thread(() => StartSync(startedBy, instanceId, ref warning));
+            var thread = new Thread(() => StartSync(startedBy, instanceId, ref warning, restVariables));
             _thread = thread;
             thread.Start();
 
@@ -946,270 +949,292 @@ namespace Wexflow.Core
         /// <param name="startedBy">Username of the user that started the workflow.</param>
         /// <param name="instanceId">Instance id.</param>
         /// <param name="resultWarning">Indicates whether the final result is warning or not.</param>
-        public bool StartSync(string startedBy, Guid instanceId, ref bool resultWarning)
+        /// <param name="restVariables">Rest variables</param>
+        /// <returns>Result.</returns>
+        public bool StartSync(string startedBy, Guid instanceId, ref bool resultWarning, List<Variable> restVariables = null)
         {
             var resultSuccess = true;
 
-            StartedOn = DateTime.Now;
-            StartedBy = startedBy;
-            InstanceId = instanceId;
-            Jobs.Add(InstanceId, this);
-
-            //
-            // Parse the workflow definition (Global variables and local variables.)
-            //
-            var dest = Parse(Xml);
-            Load(dest);
-
-            _stopCalled = false;
-
-            Logs.Clear();
-
-            if (WexflowEngine.LogLevel != LogLevel.None)
-            {
-                var msg = $"{LogTag} Workflow started - Instance Id: {InstanceId}";
-                Logger.Info(msg);
-                Logs.Add($"{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)}  INFO - {msg}");
-            }
-
-            Database.IncrementRunningCount();
-
-            var entry = Database.GetEntry(Id, InstanceId);
-            if (entry == null)
-            {
-                var newEntry = new Entry
-                {
-                    WorkflowId = Id,
-                    JobId = InstanceId.ToString(),
-                    Name = Name,
-                    LaunchType = (Db.LaunchType)(int)LaunchType,
-                    Description = Description,
-                    Status = Db.Status.Running,
-                    StatusDate = DateTime.Now,
-                    Logs = string.Join("\r\n", Logs)
-                };
-                Database.InsertEntry(newEntry);
-            }
-            else
-            {
-                entry.Status = Db.Status.Running;
-                entry.StatusDate = DateTime.Now;
-                entry.Logs = string.Join("\r\n", Logs);
-                Database.UpdateEntry(entry.GetDbId(), entry);
-            }
-            entry = Database.GetEntry(Id, InstanceId);
-
-            _historyEntry = new HistoryEntry
-            {
-                WorkflowId = Id,
-                Name = Name,
-                LaunchType = (Db.LaunchType)(int)LaunchType,
-                Description = Description
-            };
-
             try
             {
-                IsRunning = true;
-                IsRejected = false;
-
-                // Create the temp folder
-                CreateTempFolder();
-
-                // Run the tasks
-                if (ExecutionGraph == null)
+                lock (padlock)
                 {
-                    var success = true;
-                    var warning = false;
-                    var error = true;
-                    RunSequentialTasks(Tasks, ref success, ref warning, ref error);
+                    StartedOn = DateTime.Now;
+                    StartedBy = startedBy;
+                    InstanceId = instanceId;
+                    Jobs.Add(InstanceId, this);
 
-                    if (!_stopCalled)
+                    //
+                    // Add rest variables
+                    //
+                    if (restVariables != null)
                     {
-                        if (IsRejected)
+                        RestVariables.Clear();
+                        RestVariables.AddRange(restVariables);
+                    }
+
+                    //
+                    // Parse the workflow definition (Global variables and local variables.)
+                    //
+                    var dest = Parse(Xml);
+                    Load(dest);
+
+                    _stopCalled = false;
+
+                    Logs.Clear();
+
+                    if (WexflowEngine.LogLevel != LogLevel.None)
+                    {
+                        var msg = $"{LogTag} Workflow started - Instance Id: {InstanceId}";
+                        Logger.Info(msg);
+                        Logs.Add($"{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)} INFO - {msg}");
+                    }
+
+                    Database.IncrementRunningCount();
+
+                    var entry = Database.GetEntry(Id, InstanceId);
+                    if (entry == null)
+                    {
+                        var newEntry = new Entry
                         {
-                            LogWorkflowFinished();
-                            Database.IncrementRejectedCount();
-                            entry.Status = Db.Status.Rejected;
-                            entry.StatusDate = DateTime.Now;
-                            entry.Logs = string.Join("\r\n", Logs);
-                            Database.UpdateEntry(entry.GetDbId(), entry);
-                            _historyEntry.Status = Db.Status.Rejected;
+                            WorkflowId = Id,
+                            JobId = InstanceId.ToString(),
+                            Name = Name,
+                            LaunchType = (Db.LaunchType)(int)LaunchType,
+                            Description = Description,
+                            Status = Db.Status.Running,
+                            StatusDate = DateTime.Now,
+                            Logs = string.Join("\r\n", Logs)
+                        };
+                        Database.InsertEntry(newEntry);
+                    }
+                    else
+                    {
+                        entry.Status = Db.Status.Running;
+                        entry.StatusDate = DateTime.Now;
+                        entry.Logs = string.Join("\r\n", Logs);
+                        Database.UpdateEntry(entry.GetDbId(), entry);
+                    }
+                    entry = Database.GetEntry(Id, InstanceId);
+
+                    _historyEntry = new HistoryEntry
+                    {
+                        WorkflowId = Id,
+                        Name = Name,
+                        LaunchType = (Db.LaunchType)(int)LaunchType,
+                        Description = Description
+                    };
+
+                    try
+                    {
+                        IsRunning = true;
+                        IsRejected = false;
+
+                        // Create the temp folder
+                        CreateTempFolder();
+
+                        // Run the tasks
+                        if (ExecutionGraph == null)
+                        {
+                            var success = true;
+                            var warning = false;
+                            var error = true;
+                            RunSequentialTasks(Tasks, ref success, ref warning, ref error);
+
+                            if (!_stopCalled)
+                            {
+                                if (IsRejected)
+                                {
+                                    LogWorkflowFinished();
+                                    Database.IncrementRejectedCount();
+                                    entry.Status = Db.Status.Rejected;
+                                    entry.StatusDate = DateTime.Now;
+                                    entry.Logs = string.Join("\r\n", Logs);
+                                    Database.UpdateEntry(entry.GetDbId(), entry);
+                                    _historyEntry.Status = Db.Status.Rejected;
+                                }
+                                else
+                                {
+                                    if (success)
+                                    {
+                                        LogWorkflowFinished();
+                                        Database.IncrementDoneCount();
+                                        entry.Status = Db.Status.Done;
+                                        entry.StatusDate = DateTime.Now;
+                                        entry.Logs = string.Join("\r\n", Logs);
+                                        Database.UpdateEntry(entry.GetDbId(), entry);
+                                        _historyEntry.Status = Db.Status.Done;
+                                    }
+                                    else if (warning)
+                                    {
+                                        LogWorkflowFinished();
+                                        Database.IncrementWarningCount();
+                                        entry.Status = Db.Status.Warning;
+                                        entry.StatusDate = DateTime.Now;
+                                        entry.Logs = string.Join("\r\n", Logs);
+                                        Database.UpdateEntry(entry.GetDbId(), entry);
+                                        _historyEntry.Status = Db.Status.Warning;
+                                        resultWarning = true;
+                                    }
+                                    else if (error)
+                                    {
+                                        LogWorkflowFinished();
+                                        Database.IncrementFailedCount();
+                                        entry.Status = Db.Status.Failed;
+                                        entry.StatusDate = DateTime.Now;
+                                        entry.Logs = string.Join("\r\n", Logs);
+                                        Database.UpdateEntry(entry.GetDbId(), entry);
+                                        _historyEntry.Status = Db.Status.Failed;
+                                        resultSuccess = false;
+                                    }
+                                }
+                            }
                         }
                         else
                         {
-                            if (success)
+                            var status = RunTasks(ExecutionGraph.Nodes, Tasks, false);
+
+                            if (!_stopCalled)
                             {
-                                LogWorkflowFinished();
-                                Database.IncrementDoneCount();
-                                entry.Status = Db.Status.Done;
-                                entry.StatusDate = DateTime.Now;
-                                entry.Logs = string.Join("\r\n", Logs);
-                                Database.UpdateEntry(entry.GetDbId(), entry);
-                                _historyEntry.Status = Db.Status.Done;
-                            }
-                            else if (warning)
-                            {
-                                LogWorkflowFinished();
-                                Database.IncrementWarningCount();
-                                entry.Status = Db.Status.Warning;
-                                entry.StatusDate = DateTime.Now;
-                                entry.Logs = string.Join("\r\n", Logs);
-                                Database.UpdateEntry(entry.GetDbId(), entry);
-                                _historyEntry.Status = Db.Status.Warning;
-                                resultWarning = true;
-                            }
-                            else if (error)
-                            {
-                                LogWorkflowFinished();
-                                Database.IncrementFailedCount();
-                                entry.Status = Db.Status.Failed;
-                                entry.StatusDate = DateTime.Now;
-                                entry.Logs = string.Join("\r\n", Logs);
-                                Database.UpdateEntry(entry.GetDbId(), entry);
-                                _historyEntry.Status = Db.Status.Failed;
-                                resultSuccess = false;
+                                switch (status)
+                                {
+                                    case Status.Success:
+                                        if (ExecutionGraph.OnSuccess != null)
+                                        {
+                                            var successTasks = NodesToTasks(ExecutionGraph.OnSuccess.Nodes);
+                                            _ = RunTasks(ExecutionGraph.OnSuccess.Nodes, successTasks, false);
+                                        }
+                                        LogWorkflowFinished();
+                                        Database.IncrementDoneCount();
+                                        entry.Status = Db.Status.Done;
+                                        entry.StatusDate = DateTime.Now;
+                                        entry.Logs = string.Join("\r\n", Logs);
+                                        Database.UpdateEntry(entry.GetDbId(), entry);
+                                        _historyEntry.Status = Db.Status.Done;
+                                        break;
+                                    case Status.Warning:
+                                        if (ExecutionGraph.OnWarning != null)
+                                        {
+                                            var warningTasks = NodesToTasks(ExecutionGraph.OnWarning.Nodes);
+                                            _ = RunTasks(ExecutionGraph.OnWarning.Nodes, warningTasks, false);
+                                        }
+                                        LogWorkflowFinished();
+                                        Database.IncrementWarningCount();
+                                        entry.Status = Db.Status.Warning;
+                                        entry.StatusDate = DateTime.Now;
+                                        entry.Logs = string.Join("\r\n", Logs);
+                                        Database.UpdateEntry(entry.GetDbId(), entry);
+                                        _historyEntry.Status = Db.Status.Warning;
+                                        resultWarning = true;
+                                        break;
+                                    case Status.Error:
+                                        if (ExecutionGraph.OnError != null)
+                                        {
+                                            var errorTasks = NodesToTasks(ExecutionGraph.OnError.Nodes);
+                                            _ = RunTasks(ExecutionGraph.OnError.Nodes, errorTasks, false);
+                                        }
+                                        LogWorkflowFinished();
+                                        Database.IncrementFailedCount();
+                                        entry.Status = Db.Status.Failed;
+                                        entry.StatusDate = DateTime.Now;
+                                        entry.Logs = string.Join("\r\n", Logs);
+                                        Database.UpdateEntry(entry.GetDbId(), entry);
+                                        _historyEntry.Status = Db.Status.Failed;
+                                        resultSuccess = false;
+                                        break;
+                                    case Status.Rejected:
+                                        if (ExecutionGraph.OnRejected != null)
+                                        {
+                                            var rejectedTasks = NodesToTasks(ExecutionGraph.OnRejected.Nodes);
+                                            _ = RunTasks(ExecutionGraph.OnRejected.Nodes, rejectedTasks, true);
+                                        }
+                                        LogWorkflowFinished();
+                                        Database.IncrementRejectedCount();
+                                        entry.Status = Db.Status.Rejected;
+                                        entry.StatusDate = DateTime.Now;
+                                        entry.Logs = string.Join("\r\n", Logs);
+                                        Database.UpdateEntry(entry.GetDbId(), entry);
+                                        _historyEntry.Status = Db.Status.Rejected;
+                                        break;
+                                    default:
+                                        break;
+                                }
                             }
                         }
-                    }
-                }
-                else
-                {
-                    var status = RunTasks(ExecutionGraph.Nodes, Tasks, false);
 
-                    if (!_stopCalled)
-                    {
-                        switch (status)
+                        if (!_stopCalled)
                         {
-                            case Status.Success:
-                                if (ExecutionGraph.OnSuccess != null)
-                                {
-                                    var successTasks = NodesToTasks(ExecutionGraph.OnSuccess.Nodes);
-                                    _ = RunTasks(ExecutionGraph.OnSuccess.Nodes, successTasks, false);
-                                }
-                                LogWorkflowFinished();
-                                Database.IncrementDoneCount();
-                                entry.Status = Db.Status.Done;
-                                entry.StatusDate = DateTime.Now;
-                                entry.Logs = string.Join("\r\n", Logs);
-                                Database.UpdateEntry(entry.GetDbId(), entry);
-                                _historyEntry.Status = Db.Status.Done;
-                                break;
-                            case Status.Warning:
-                                if (ExecutionGraph.OnWarning != null)
-                                {
-                                    var warningTasks = NodesToTasks(ExecutionGraph.OnWarning.Nodes);
-                                    _ = RunTasks(ExecutionGraph.OnWarning.Nodes, warningTasks, false);
-                                }
-                                LogWorkflowFinished();
-                                Database.IncrementWarningCount();
-                                entry.Status = Db.Status.Warning;
-                                entry.StatusDate = DateTime.Now;
-                                entry.Logs = string.Join("\r\n", Logs);
-                                Database.UpdateEntry(entry.GetDbId(), entry);
-                                _historyEntry.Status = Db.Status.Warning;
-                                resultWarning = true;
-                                break;
-                            case Status.Error:
-                                if (ExecutionGraph.OnError != null)
-                                {
-                                    var errorTasks = NodesToTasks(ExecutionGraph.OnError.Nodes);
-                                    _ = RunTasks(ExecutionGraph.OnError.Nodes, errorTasks, false);
-                                }
-                                LogWorkflowFinished();
-                                Database.IncrementFailedCount();
-                                entry.Status = Db.Status.Failed;
-                                entry.StatusDate = DateTime.Now;
-                                entry.Logs = string.Join("\r\n", Logs);
-                                Database.UpdateEntry(entry.GetDbId(), entry);
-                                _historyEntry.Status = Db.Status.Failed;
-                                resultSuccess = false;
-                                break;
-                            case Status.Rejected:
-                                if (ExecutionGraph.OnRejected != null)
-                                {
-                                    var rejectedTasks = NodesToTasks(ExecutionGraph.OnRejected.Nodes);
-                                    _ = RunTasks(ExecutionGraph.OnRejected.Nodes, rejectedTasks, true);
-                                }
-                                LogWorkflowFinished();
-                                Database.IncrementRejectedCount();
-                                entry.Status = Db.Status.Rejected;
-                                entry.StatusDate = DateTime.Now;
-                                entry.Logs = string.Join("\r\n", Logs);
-                                Database.UpdateEntry(entry.GetDbId(), entry);
-                                _historyEntry.Status = Db.Status.Rejected;
-                                break;
+                            _historyEntry.StatusDate = DateTime.Now;
+                            _historyEntry.Logs = string.Join("\r\n", Logs);
+                            Database.InsertHistoryEntry(_historyEntry);
+                            Database.DecrementRunningCount();
+                        }
+                    }
+                    catch (ThreadAbortException)
+                    {
+                        _stopCalled = true;
+                    }
+                    catch (Exception e)
+                    {
+                        if (WexflowEngine.LogLevel != LogLevel.None)
+                        {
+                            var emsg = $"An error occured while running the workflow. Error: {this}";
+                            Logger.Error(emsg, e);
+                            Logs.Add($"{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)}  ERROR - {emsg}\r\n{e}");
+                        }
+                        Database.DecrementRunningCount();
+                        Database.IncrementFailedCount();
+                        entry.Status = Db.Status.Failed;
+                        entry.StatusDate = DateTime.Now;
+                        entry.Logs = string.Join("\r\n", Logs);
+                        Database.UpdateEntry(entry.GetDbId(), entry);
+                        _historyEntry.Status = Db.Status.Failed;
+                        _historyEntry.StatusDate = DateTime.Now;
+                        _historyEntry.Logs = string.Join("\r\n", Logs);
+                        Database.InsertHistoryEntry(_historyEntry);
+                    }
+                    finally
+                    {
+                        // Cleanup
+                        if (!_stopCalled)
+                        {
+                            Logs.Clear();
+                        }
+                        foreach (var files in FilesPerTask.Values)
+                        {
+                            files.Clear();
+                        }
+
+                        foreach (var entities in EntitiesPerTask.Values)
+                        {
+                            entities.Clear();
+                        }
+
+                        IsRunning = false;
+                        IsRejected = false;
+                        GC.Collect();
+
+                        JobId = ++ParallelJobId;
+                        _ = Jobs.Remove(InstanceId);
+
+                        if (_jobsQueue.Count > 0)
+                        {
+                            var job = _jobsQueue.Dequeue();
+                            _ = job.Workflow.StartAsync(startedBy);
+                        }
+                        else
+                        {
+                            if (!_stopCalled)
+                            {
+                                Load(Xml); // Reload the original workflow
+                            }
+                            RestVariables.Clear();
                         }
                     }
                 }
-
-                if (!_stopCalled)
-                {
-                    _historyEntry.StatusDate = DateTime.Now;
-                    _historyEntry.Logs = string.Join("\r\n", Logs);
-                    Database.InsertHistoryEntry(_historyEntry);
-                    Database.DecrementRunningCount();
-                }
             }
-            catch (ThreadAbortException)
+            catch (ThreadInterruptedException)
             {
-                _stopCalled = true;
-            }
-            catch (Exception e)
-            {
-                if (WexflowEngine.LogLevel != LogLevel.None)
-                {
-                    var emsg = $"An error occured while running the workflow. Error: {this}";
-                    Logger.Error(emsg, e);
-                    Logs.Add($"{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)}  ERROR - {emsg}\r\n{e}");
-                }
-                Database.DecrementRunningCount();
-                Database.IncrementFailedCount();
-                entry.Status = Db.Status.Failed;
-                entry.StatusDate = DateTime.Now;
-                entry.Logs = string.Join("\r\n", Logs);
-                Database.UpdateEntry(entry.GetDbId(), entry);
-                _historyEntry.Status = Db.Status.Failed;
-                _historyEntry.StatusDate = DateTime.Now;
-                _historyEntry.Logs = string.Join("\r\n", Logs);
-                Database.InsertHistoryEntry(_historyEntry);
-            }
-            finally
-            {
-                // Cleanup
-                if (!_stopCalled)
-                {
-                    Logs.Clear();
-                }
-                foreach (var files in FilesPerTask.Values)
-                {
-                    files.Clear();
-                }
-
-                foreach (var entities in EntitiesPerTask.Values)
-                {
-                    entities.Clear();
-                }
-
-                IsRunning = false;
-                IsRejected = false;
-                GC.Collect();
-
-                JobId = ++ParallelJobId;
-                _ = Jobs.Remove(InstanceId);
-
-                if (_jobsQueue.Count > 0)
-                {
-                    var job = _jobsQueue.Dequeue();
-                    _ = job.Workflow.StartAsync(startedBy);
-                }
-                else
-                {
-                    if (!_stopCalled)
-                    {
-                        Load(Xml); // Reload the original workflow
-                    }
-                    RestVariables.Clear();
-                }
             }
 
             return resultSuccess;
@@ -1288,7 +1313,7 @@ namespace Wexflow.Core
             var warning = false;
             var atLeastOneSucceed = false;
 
-            if (nodes.Any())
+            if (nodes.Length != 0)
             {
                 var startNode = GetStartupNode(nodes);
 
@@ -1361,7 +1386,7 @@ namespace Wexflow.Core
                 }
             }
 
-            if (enumerable.Any() && !success && atLeastOneSucceed)
+            if (enumerable.Length != 0 && !success && atLeastOneSucceed)
             {
                 warning = true;
             }
@@ -1511,7 +1536,7 @@ namespace Wexflow.Core
                             }
                         }
                     }
-                    else if (status.Condition == false)
+                    else if (!status.Condition)
                     {
                         if (@if.ElseNodes != null && @if.ElseNodes.Length > 0)
                         {
@@ -1573,7 +1598,7 @@ namespace Wexflow.Core
                                 RunTasks(doWhileTasks, @while.Nodes, doWhileStartNode, force, ref success, ref warning, ref atLeastOneSucceed);
                             }
                         }
-                        else if (status.Condition == false)
+                        else if (!status.Condition)
                         {
                             break;
                         }
@@ -1697,10 +1722,15 @@ namespace Wexflow.Core
                     Logs.Clear();
                     _ = Jobs.Remove(InstanceId);
 
-                    if (_jobsQueue.Count > 0)
+                    //if (_jobsQueue.Count > 0)
+                    //{
+                    //    var job = _jobsQueue.Dequeue();
+                    //    _ = job.Workflow.StartAsync(StartedBy);
+                    //}
+
+                    foreach (var job in _jobsQueue)
                     {
-                        var job = _jobsQueue.Dequeue();
-                        _ = job.Workflow.StartAsync(StartedBy);
+                        _ = job.Workflow.Stop(stoppedBy);
                     }
 
                     Load(Xml); // Reload the original workflow

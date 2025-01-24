@@ -21,6 +21,8 @@ namespace Wexflow.Tasks.Ftp
                 case EncryptionMode.Implicit:
                     _encryptionMode = FtpEncryptionMode.Implicit;
                     break;
+                default:
+                    break;
             }
         }
 
@@ -49,7 +51,7 @@ namespace Wexflow.Tasks.Ftp
 
         public override FileInf[] List()
         {
-            List<FileInf> files = new();
+            List<FileInf> files = [];
 
             FtpClient client = new()
             {
@@ -80,7 +82,7 @@ namespace Wexflow.Tasks.Ftp
 
             client.Disconnect();
 
-            return files.ToArray();
+            return [.. files];
         }
 
         public override void Upload(FileInf file)

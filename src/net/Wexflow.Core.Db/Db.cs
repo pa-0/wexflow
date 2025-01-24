@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
@@ -140,9 +140,9 @@ namespace Wexflow.Core.Db
             {
                 var inputBytes = Encoding.ASCII.GetBytes(input);
                 var hashBytes = md5.ComputeHash(inputBytes);
-
                 // Convert the byte array to hexadecimal string
                 var sb = new StringBuilder();
+                // ReSharper disable once ForCanBeConvertedToForeach
                 for (var i = 0; i < hashBytes.Length; i++)
                 {
                     _ = sb.Append(hashBytes[i].ToString("x2"));
